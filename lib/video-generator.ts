@@ -18,18 +18,21 @@ export interface VideoGenerationOptions {
 }
 
 export interface GeneratedVideo {
-  videoUrl: string
-  audioUrl?: string
-  title: string
-  duration: string
-  thumbnail: string
-  hasAudio: boolean
+  videoUrl: string;
+  audioUrl?: string;
+  imageUrl?: string;
+  title: string;
+  duration: string;
+  thumbnail: string;
+  hasAudio: boolean;
+  mediaType: "images" | "audio" | "videos";
+  waveformUrl?: string;
   geminiInsights?: {
-    scenes: any[]
-    narration: any
-    effects: string[]
-    colorPalette: string[]
-  }
+    scenes: any[];
+    narration: any;
+    effects: string[];
+    colorPalette: string[];
+  };
 }
 
 // Sample images and assets for realistic video generation
@@ -69,116 +72,281 @@ export async function generateVideo(options: VideoGenerationOptions): Promise<Ge
     captionBgOpacity = 0.8,
   } = options
 
-  // Step 1: Generate AI-powered content plan using Gemini
-  console.log("🤖 Generating content with Gemini AI...")
-  const geminiRequest: GeminiVideoRequest = {
-    prompt: prompt || text,
-    visualStyle,
-    sceneType,
-    customFields,
-    duration: 5,
-  }
-
-  const geminiResponse = await geminiClient.generateVideoContent(geminiRequest)
-  console.log("✅ Gemini AI content generated:", geminiResponse)
-
-  // Step 2: Generate audio using Gemini's narration script
-  let audioUrl: string | undefined
-  if (includeAudio) {
-    audioUrl = await generateAudioFromGemini(geminiResponse.narration, voiceType)
-  }
-
-  // Step 3: Create video using Gemini's scene plan
-  const canvas = document.createElement("canvas")
-  const ctx = canvas.getContext("2d")!
-  canvas.width = 720
-  canvas.height = 1280 // 9:16 aspect ratio
-
-  // Generate frames based on Gemini's scene breakdown
-  const frames: ImageData[] = []
-  const frameCount = 150 // 5 seconds at 30fps
-  const framesPerScene = frameCount / geminiResponse.scenes.length
-
-  for (let i = 0; i < frameCount; i++) {
-    const currentSceneIndex = Math.floor(i / framesPerScene)
-    const currentScene = geminiResponse.scenes[currentSceneIndex] || geminiResponse.scenes[0]
-    const sceneProgress = (i % framesPerScene) / framesPerScene
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // Draw background using Gemini's color palette
-    drawGeminiBackground(ctx, geminiResponse.colorPalette, currentScene, sceneProgress, canvas.width, canvas.height)
-
-    // Draw scene content based on Gemini's description
-    await drawGeminiScene(
-      ctx,
-      currentScene,
+  try {
+    // Step 1: Generate AI-powered content plan using Gemini
+    console.log("🤖 Generating content with Gemini AI...")
+    const geminiRequest: GeminiVideoRequest = {
+      prompt: prompt || text,
       visualStyle,
-      sceneProgress,
-      canvas.width,
-      canvas.height,
-      geminiResponse.colorPalette,
-    )
+      sceneType,
+      customFields,
+      duration: 5,
+    }
 
-    // Apply Gemini's visual effects
-    applyGeminiEffects(ctx, geminiResponse.visualEffects, visualStyle, sceneProgress, canvas.width, canvas.height)
+    const geminiResponse = await geminiClient.generateVideoContent(geminiRequest)
+    console.log("✅ Gemini AI content generated:", geminiResponse)
 
-    // Add captions using Gemini's narration timing with custom colors
-    if (includeCaptions) {
-      drawGeminiCaptions(
+    // Step 2: Generate audio using Gemini's narration script
+    let audioUrl: string | undefined
+    if (includeAudio) {
+      console.log("🎵 Generating audio...")
+      audioUrl = await generateAudioFromGemini(geminiResponse.narration, voiceType)
+      console.log("✅ Audio generated successfully")
+    }
+
+    // Step 3: Create enhanced video using Gemini's scene plan
+    console.log("🎬 Creating video frames...")
+    const canvas = document.createElement("canvas")
+    const ctx = canvas.getContext("2d")!
+    canvas.width = 720
+    canvas.height = 1280 // 9:16 aspect ratio
+
+    // Generate frames with better quality
+    const frames: ImageData[] = []
+    const frameCount = 150 // 5 seconds at 30fps
+    const framesPerScene = frameCount / geminiResponse.scenes.length
+
+    for (let i = 0; i < frameCount; i++) {
+      const currentSceneIndex = Math.floor(i / framesPerScene)
+      const currentScene = geminiResponse.scenes[currentSceneIndex] || geminiResponse.scenes[0]
+      const sceneProgress = (i % framesPerScene) / framesPerScene
+
+      // Clear canvas with better quality
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = "high"
+
+      // Draw enhanced background
+      drawGeminiBackground(ctx, geminiResponse.colorPalette, currentScene, sceneProgress, canvas.width, canvas.height)
+
+      // Draw scene content
+      await drawGeminiScene(
         ctx,
-        geminiResponse.narration,
-        i,
-        frameCount,
+        currentScene,
+        visualStyle,
+        sceneProgress,
         canvas.width,
         canvas.height,
-        visualStyle,
-        captionBgColor,
-        captionTextColor,
-        captionBgOpacity,
+        geminiResponse.colorPalette,
       )
+
+      // Apply visual effects
+      applyGeminiEffects(ctx, geminiResponse.visualEffects, visualStyle, sceneProgress, canvas.width, canvas.height)
+
+      // Add captions with custom colors
+      if (includeCaptions) {
+        drawGeminiCaptions(
+          ctx,
+          geminiResponse.narration,
+          i,
+          frameCount,
+          canvas.width,
+          canvas.height,
+          visualStyle,
+          captionBgColor,
+          captionTextColor,
+          captionBgOpacity,
+        )
+      }
+
+      // Add custom overlays
+      if (customFields) {
+        drawCustomOverlays(ctx, customFields, i, frameCount, canvas.width, canvas.height, visualStyle)
+      }
+
+      frames.push(ctx.getImageData(0, 0, canvas.width, canvas.height))
     }
 
-    // Add custom overlays
-    if (customFields) {
-      drawCustomOverlays(ctx, customFields, i, frameCount, canvas.width, canvas.height, visualStyle)
-    }
+    console.log(`✅ Generated ${frames.length} video frames`)
 
-    frames.push(ctx.getImageData(0, 0, canvas.width, canvas.height))
-  }
+    // Step 4: Create final video with integrated audio
+    console.log("🎬 Rendering final video...")
+    const videoBlob = await createVideoFromFrames(frames, canvas.width, canvas.height, audioUrl, includeAudio)
+    const videoUrl = URL.createObjectURL(videoBlob)
+    console.log("✅ Video rendered successfully")
 
-  // Step 4: Create final video with integrated audio
-  const videoBlob = await createVideoFromFrames(frames, canvas.width, canvas.height, audioUrl, includeAudio)
-  const videoUrl = URL.createObjectURL(videoBlob)
+    // Step 5: Generate thumbnail
+    const thumbnailUrl = await generateThumbnail(frames[Math.floor(frames.length / 3)], canvas.width, canvas.height)
 
-  // Step 5: Generate thumbnail
-  const thumbnailUrl = await generateThumbnail(frames[Math.floor(frames.length / 3)], canvas.width, canvas.height)
-
-  return {
-    videoUrl,
-    audioUrl,
-    title: generateGeminiTitle(geminiResponse, tool, text, customFields),
-    duration: "0:05",
-    thumbnail: thumbnailUrl,
-    hasAudio: !!audioUrl,
-    geminiInsights: {
-      scenes: geminiResponse.scenes,
-      narration: geminiResponse.narration,
-      effects: geminiResponse.visualEffects,
-      colorPalette: geminiResponse.colorPalette,
-    },
+    return {
+      videoUrl,
+      audioUrl,
+      imageUrl: undefined, // or actual image url if available
+      title: generateGeminiTitle(geminiResponse, tool, text, customFields),
+      duration: "0:05",
+      thumbnail: thumbnailUrl,
+      hasAudio: !!audioUrl && includeAudio,
+      mediaType:
+        tool === "audio" ? "audio" : tool === "images" ? "images" : "videos",
+      waveformUrl: audioUrl ? geminiResponse.waveformUrl : undefined, // only if audio
+      geminiInsights: {
+        scenes: geminiResponse.scenes,
+        narration: geminiResponse.narration,
+        effects: geminiResponse.visualEffects,
+        colorPalette: geminiResponse.colorPalette,
+      },
+    };
+  } catch (error) {
+    console.error("❌ Video generation failed:", error)
+    throw new Error(`Video generation failed: ${error instanceof Error ? error.message : "Unknown error"}`)
   }
 }
 
 async function generateAudioFromGemini(narration: any, voiceType: string): Promise<string> {
-  // Simulate advanced audio generation using Gemini's script
-  await new Promise((resolve) => setTimeout(resolve, 1500))
+  console.log("🎵 Generating enhanced audio from Gemini script:", narration.script)
 
-  // In a real implementation, this would use the narration script and timing
-  console.log("🎵 Generating audio from Gemini script:", narration.script)
+  // Create more realistic audio with proper timing
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+  const duration = 5 // 5 seconds to match video
+  const sampleRate = audioContext.sampleRate
+  const buffer = audioContext.createBuffer(2, duration * sampleRate, sampleRate) // Stereo
 
-  return createAudioBlob(narration.script, voiceType)
+  // Generate speech-like audio for each channel
+  for (let channel = 0; channel < 2; channel++) {
+    const data = buffer.getChannelData(channel)
+
+    // Voice characteristics based on type
+    const baseFreq = voiceType === "male" ? 120 : voiceType === "female" ? 200 : voiceType === "child" ? 300 : 150
+    const formant1 = baseFreq * 2.5
+    const formant2 = baseFreq * 4.5
+
+    for (let i = 0; i < data.length; i++) {
+      const time = i / sampleRate
+      const wordProgress = (time % 0.8) / 0.8 // Word every 0.8 seconds
+
+      // Create more natural speech patterns
+      const fundamental = Math.sin(2 * Math.PI * baseFreq * time) * 0.4
+      const formant1Wave = Math.sin(2 * Math.PI * formant1 * time) * 0.25
+      const formant2Wave = Math.sin(2 * Math.PI * formant2 * time) * 0.15
+
+      // Add natural speech envelope and breathing
+      const speechEnvelope = Math.sin(Math.PI * wordProgress) * 0.8
+      const breathingPattern = 1 + Math.sin(time * 0.5) * 0.1
+
+      // Combine all elements
+      data[i] = (fundamental + formant1Wave + formant2Wave) * speechEnvelope * breathingPattern * 0.6
+    }
+  }
+
+  // Convert to WAV with proper headers
+  const wavBlob = bufferToWave(buffer, buffer.length)
+  return URL.createObjectURL(wavBlob)
+}
+
+async function createVideoFromFrames(
+  frames: ImageData[],
+  width: number,
+  height: number,
+  audioUrl?: string,
+  includeAudio = true,
+): Promise<Blob> {
+  const canvas = document.createElement("canvas")
+  const ctx = canvas.getContext("2d")!
+  canvas.width = width
+  canvas.height = height
+
+  // Create video stream with higher quality settings
+  const stream = canvas.captureStream(30)
+
+  let mediaRecorder: MediaRecorder
+  let audioTrack: MediaStreamTrack | null = null
+
+  // Add audio track if available
+  if (includeAudio && audioUrl) {
+    try {
+      const audioElement = new Audio()
+      audioElement.crossOrigin = "anonymous"
+      audioElement.src = audioUrl
+
+      // Wait for audio to load
+      await new Promise((resolve, reject) => {
+        audioElement.onloadeddata = resolve
+        audioElement.onerror = reject
+        audioElement.load()
+      })
+
+      // Create audio context and connect to stream
+      const audioContext = new AudioContext()
+      const source = audioContext.createMediaElementSource(audioElement)
+      const destination = audioContext.createMediaStreamDestination()
+
+      // Connect audio with gain control
+      const gainNode = audioContext.createGain()
+      gainNode.gain.value = 1.0 // Full volume
+      source.connect(gainNode)
+      gainNode.connect(destination)
+
+      // Add audio track to video stream
+      const audioTracks = destination.stream.getAudioTracks()
+      if (audioTracks.length > 0) {
+        audioTrack = audioTracks[0]
+        stream.addTrack(audioTrack)
+        console.log("✅ Audio track successfully added to video stream")
+      }
+
+      // Start audio playback
+      audioElement.play().catch(console.warn)
+    } catch (error) {
+      console.warn("Could not integrate audio track:", error)
+    }
+  }
+
+  // Create MediaRecorder with optimized settings
+  const options = {
+    mimeType: "video/webm;codecs=vp9,opus", // Include opus for audio
+    videoBitsPerSecond: 3000000, // Higher quality video
+    audioBitsPerSecond: 128000, // High quality audio
+  }
+
+  try {
+    mediaRecorder = new MediaRecorder(stream, options)
+  } catch (e) {
+    // Fallback for browsers that don't support the codec
+    mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" })
+  }
+
+  const chunks: Blob[] = []
+
+  return new Promise((resolve, reject) => {
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunks.push(event.data)
+      }
+    }
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, { type: "video/webm" })
+
+      // Clean up audio track
+      if (audioTrack) {
+        audioTrack.stop()
+      }
+
+      resolve(blob)
+    }
+
+    mediaRecorder.onerror = (event) => {
+      console.error("MediaRecorder error:", event)
+      reject(new Error("Video recording failed"))
+    }
+
+    mediaRecorder.start(100) // Collect data every 100ms
+
+    let frameIndex = 0
+    const playFrame = () => {
+      if (frameIndex < frames.length) {
+        ctx.putImageData(frames[frameIndex], 0, 0)
+        frameIndex++
+        setTimeout(playFrame, 1000 / 30) // 30 FPS
+      } else {
+        setTimeout(() => {
+          mediaRecorder.stop()
+        }, 500) // Allow final frames to be captured
+      }
+    }
+
+    playFrame()
+  })
 }
 
 function drawGeminiBackground(
@@ -593,76 +761,6 @@ function drawCustomOverlays(
   ctx.globalAlpha = 1
 }
 
-async function createVideoFromFrames(
-  frames: ImageData[],
-  width: number,
-  height: number,
-  audioUrl?: string,
-  includeAudio = true,
-): Promise<Blob> {
-  const canvas = document.createElement("canvas")
-  const ctx = canvas.getContext("2d")!
-  canvas.width = width
-  canvas.height = height
-
-  // Create video stream
-  const stream = canvas.captureStream(30)
-
-  // If audio is included and available, add audio track to stream
-  if (includeAudio && audioUrl) {
-    try {
-      const audioElement = new Audio(audioUrl)
-      const audioContext = new AudioContext()
-      const source = audioContext.createMediaElementSource(audioElement)
-      const destination = audioContext.createMediaStreamDestination()
-      source.connect(destination)
-
-      // Add audio track to video stream
-      const audioTrack = destination.stream.getAudioTracks()[0]
-      if (audioTrack) {
-        stream.addTrack(audioTrack)
-      }
-    } catch (error) {
-      console.warn("Could not integrate audio track:", error)
-    }
-  }
-
-  const mediaRecorder = new MediaRecorder(stream, {
-    mimeType: "video/webm;codecs=vp9",
-    videoBitsPerSecond: 2500000, // Higher quality
-  })
-
-  const chunks: Blob[] = []
-
-  return new Promise((resolve) => {
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunks.push(event.data)
-      }
-    }
-
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(chunks, { type: "video/webm" })
-      resolve(blob)
-    }
-
-    mediaRecorder.start()
-
-    let frameIndex = 0
-    const playFrame = () => {
-      if (frameIndex < frames.length) {
-        ctx.putImageData(frames[frameIndex], 0, 0)
-        frameIndex++
-        setTimeout(playFrame, 1000 / 30)
-      } else {
-        mediaRecorder.stop()
-      }
-    }
-
-    playFrame()
-  })
-}
-
 async function generateThumbnail(frameData: ImageData, width: number, height: number): Promise<string> {
   const canvas = document.createElement("canvas")
   const ctx = canvas.getContext("2d")!
@@ -708,48 +806,16 @@ function generateGeminiTitle(
   }
 }
 
-async function createAudioBlob(script: string, voiceType: string): Promise<string> {
-  // Simulate advanced audio generation
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-  const duration = 5 // 5 seconds
-  const sampleRate = audioContext.sampleRate
-  const buffer = audioContext.createBuffer(1, duration * sampleRate, sampleRate)
-  const data = buffer.getChannelData(0)
-
-  // Generate more sophisticated audio based on voice type
-  const baseFreq = voiceType === "male" ? 120 : voiceType === "female" ? 200 : voiceType === "child" ? 300 : 150
-
-  for (let i = 0; i < data.length; i++) {
-    const time = i / sampleRate
-    const wordProgress = (time % 0.5) / 0.5 // Word every 0.5 seconds
-
-    // Create speech-like waveform with formants
-    const fundamental = Math.sin(2 * Math.PI * baseFreq * time) * 0.3
-    const formant1 = Math.sin(2 * Math.PI * (baseFreq * 3) * time) * 0.2
-    const formant2 = Math.sin(2 * Math.PI * (baseFreq * 5) * time) * 0.1
-
-    // Add word-like envelope
-    const envelope = Math.sin(Math.PI * wordProgress) * 0.5
-
-    data[i] = (fundamental + formant1 + formant2) * envelope * 0.3
-  }
-
-  // Convert to WAV blob
-  const wavBlob = bufferToWave(buffer, buffer.length)
-  return URL.createObjectURL(wavBlob)
-}
-
 function bufferToWave(abuffer: AudioBuffer, len: number): Blob {
   const numOfChan = abuffer.numberOfChannels
   const length = len * numOfChan * 2 + 44
   const buffer = new ArrayBuffer(length)
   const view = new DataView(buffer)
-  const channels = []
   let sample
   let offset = 0
   let pos = 0
 
-  // Write WAV header
+  // Write WAV header with proper format
   setUint32(0x46464952) // "RIFF"
   setUint32(length - 8) // file length - 8
   setUint32(0x45564157) // "WAVE"
@@ -764,19 +830,19 @@ function bufferToWave(abuffer: AudioBuffer, len: number): Blob {
   setUint32(0x61746164) // "data" - chunk
   setUint32(length - pos - 4) // chunk length
 
-  // Write interleaved data
+  // Write interleaved data with proper scaling
   for (let i = 0; i < abuffer.numberOfChannels; i++) {
-    channels.push(abuffer.getChannelData(i))
-  }
+    const channelData = abuffer.getChannelData(i)
+    offset = 0
+    pos = 44 + i * 2 // Start position for this channel
 
-  while (pos < length) {
-    for (let i = 0; i < numOfChan; i++) {
-      sample = Math.max(-1, Math.min(1, channels[i][offset])) // clamp
-      sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0 // scale to 16-bit signed int
+    while (offset < len && pos < length - 1) {
+      sample = Math.max(-1, Math.min(1, channelData[offset])) // clamp
+      sample = (sample < 0 ? sample * 0x8000 : sample * 0x7fff) | 0 // scale to 16-bit signed int
       view.setInt16(pos, sample, true) // write 16-bit sample
-      pos += 2
+      pos += numOfChan * 2 // move to next sample for this channel
+      offset++
     }
-    offset++ // next source sample
   }
 
   return new Blob([buffer], { type: "audio/wav" })

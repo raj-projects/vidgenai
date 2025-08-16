@@ -9,20 +9,21 @@ export interface GeminiVideoRequest {
 
 export interface GeminiVideoResponse {
   scenes: Array<{
-    description: string
-    duration: number
-    visualElements: string[]
-    cameraMovement: string
-    lighting: string
-  }>
+    description: string;
+    duration: number;
+    visualElements: string[];
+    cameraMovement: string;
+    lighting: string;
+  }>;
   narration: {
-    script: string
-    timing: Array<{ text: string; startTime: number; endTime: number }>
-    voiceInstructions: string
-  }
-  visualEffects: string[]
-  musicSuggestion: string
-  colorPalette: string[]
+    script: string;
+    timing: Array<{ text: string; startTime: number; endTime: number }>;
+    voiceInstructions: string;
+  };
+  visualEffects: string[];
+  musicSuggestion: string;
+  colorPalette: string[];
+  waveformUrl?: string;
 }
 
 class GeminiClient {

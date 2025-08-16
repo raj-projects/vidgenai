@@ -4,8 +4,10 @@ import { GeistMono } from 'geist/font/mono'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Creatify AI',
-}
+  title: "Mekeify",
+  description: "App for generating videos from text",
+  generator: "",
+};
 
 export default function RootLayout({
   children,
